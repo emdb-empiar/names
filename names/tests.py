@@ -4,11 +4,101 @@ import noid
 
 from . import ImageName, AnnotationName
 
+_image_attrs = [
+    'canonical_name',
+    'uppercase_hyphen_name',
+    'lowercase_hyphen_name',
+    'uppercase_underscore_name',
+    'lowercase_underscore_name',
+    'full_name_upper',
+    'full_name_lower',
+    'file_name',
+]
+
 
 class TestImageName(unittest.TestCase):
-    def test_defaults(self):
+    def test_emdb_defaults(self):
+        """Test that we have some value when failed parsing"""
         en = ImageName('emd1234')
+        self.assertFalse(en.matched)
+        self.assertFalse(en.is_test)
+        self.assertIsNone(en.archive)
+        self.assertIsNone(en.entry_id)
+        self.assertIsNone(en.suffix)
+        self.assertEqual('map', en.ext)
+        self.assertEqual('', en.entry_subtree)
+        for attr in _image_attrs:
+            self.assertIsNone(getattr(en, attr))
+        # valid name
+        en = ImageName('emd_1234.map', verbose=True)
+        self.assertFalse(en.is_test)
+        self.assertTrue(en.matched)
+        self.assertEqual('emdb', en.archive)
+        self.assertEqual('1234', en.entry_id)
+        self.assertEqual('', en.suffix)
+        self.assertEqual('map', en.ext)
+        self.assertEqual('12/1234/', en.entry_subtree)
+        # required attributes
+        values = [
+            'emd_1234',
+            'EMD-1234',
+            'emd-1234',
+            'EMD_1234',
+            'emd_1234',
+            'EMD-1234',
+            'emd-1234',
+            'emd_1234.map'
+        ]
+        for i, attr in enumerate(_image_attrs):
+            expected_value = values[i]
+            value = getattr(en, attr)
+            self.assertEqual(expected_value, value)
+        # test file
+        en = ImageName('test-emd_1234.map', verbose=True)
+        self.assertTrue(en.is_test)
+        # .gz file
+        en = ImageName('emd_1234.map.gz', verbose=True)
+        self.assertEqual('map.gz', en.ext)
 
+    def test_empiar_defaults(self):
+        """Test that we have some value when failed parsing"""
+        en = ImageName('empiar12345-some.other_value')
+        self.assertFalse(en.matched)
+        self.assertFalse(en.is_test)
+        self.assertIsNone(en.archive)
+        self.assertIsNone(en.entry_id)
+        self.assertIsNone(en.suffix)
+        self.assertEqual('map', en.ext)
+        self.assertEqual('', en.entry_subtree)
+        for attr in _image_attrs:
+            self.assertIsNone(getattr(en, attr))
+        # valid name
+        en = ImageName('empiar_12345-some.other_value.mrc', verbose=True)
+        self.assertFalse(en.is_test)
+        self.assertTrue(en.matched)
+        self.assertEqual('empiar', en.archive)
+        self.assertEqual('12345', en.entry_id)
+        self.assertEqual('-some.other_value', en.suffix)
+        self.assertEqual('mrc', en.ext)
+        self.assertEqual('empiar_12345/empiar_12345-some.other_value/', en.entry_subtree)
+        # required attributes
+        values = [
+            'empiar_12345-some.other_value',
+            'EMPIAR-12345',
+            'empiar-12345',
+            'EMPIAR_12345',
+            'empiar_12345',
+            'EMPIAR-12345-SOME.OTHER_VALUE',
+            'empiar-12345-some.other_value',
+            'empiar_12345-some.other_value.mrc'
+        ]
+        for i, attr in enumerate(_image_attrs):
+            expected_value = values[i]
+            value = getattr(en, attr)
+            self.assertEqual(expected_value, value)
+        # test file
+        en = ImageName('test-empiar_12345-some.other_value.mrc', verbose=True)
+        self.assertTrue(en.is_test)
 
     def test_empiar(self):
         en = ImageName('empiar_10052-ring_1')
@@ -19,8 +109,8 @@ class TestImageName(unittest.TestCase):
         self.assertEqual('EMPIAR_10052', en.uppercase_underscore_name)
         self.assertEqual('empiar-10052', en.lowercase_hyphen_name)
         self.assertEqual('empiar_10052', en.lowercase_underscore_name)
-        self.assertEqual('EMPIAR_10052-RING_1', en.full_name_upper)
-        self.assertEqual('empiar_10052-ring_1', en.full_name_lower)
+        self.assertEqual('EMPIAR-10052-RING_1', en.full_name_upper)
+        self.assertEqual('empiar-10052-ring_1', en.full_name_lower)
         self.assertEqual('empiar_10052-ring_1.mrc', en.file_name)
         self.assertEqual('mrc', en.ext)
 
@@ -67,7 +157,7 @@ _annotation_attrs = [
 
 
 class TestAnnotationName(unittest.TestCase):
-    def test_defaults(self):
+    def test_emdb_defaults(self):
         """Test that even if we fail to parse the given name we have some values"""
         an = AnnotationName('emd1234')
         self.assertFalse(an.is_test)
@@ -90,8 +180,67 @@ class TestAnnotationName(unittest.TestCase):
         self.assertEqual('', an.qualifier)
         self.assertEqual('oZRVsrr', an.noid)
         self.assertEqual('12/1234/oZRVsrr/', an.entry_subtree)
+        # required attributes
+        values = [
+            'emd_1234',
+            'emd_1234-oZRVsrr',
+            'EMD-1234',
+            'emd-1234',
+            'EMD_1234',
+            'emd_1234',
+            'EMD-1234-oZRVsrr',
+            'emd-1234-oZRVsrr',
+            'emd_1234-oZRVsrr.hff',
+        ]
+        for i, attr in enumerate(_annotation_attrs):
+            expected_value = values[i]
+            value = getattr(an, attr)
+            self.assertEqual(expected_value, value)
         # test file
         an = AnnotationName('test-emd_1234-oZRVsrr.sff', verbose=True)
+        self.assertTrue(an.is_test)
+
+    def test_empiar_defaults(self):
+        """Test that even if we fail to parse the given name we have some values"""
+        an = AnnotationName('empiar1234-some.other-var-oZRVsrr.sff')
+        self.assertFalse(an.is_test)
+        self.assertIsNone(an.archive)
+        self.assertIsNone(an.entry_id)
+        self.assertIsNone(an.suffix)
+        self.assertEqual('sff', an.ext)
+        self.assertIsNone(an.qualifier)
+        self.assertIsNone(an.noid)
+        self.assertEqual('', an.entry_subtree)
+        for attr in _annotation_attrs:
+            self.assertIsNone(getattr(an, attr))
+        # good file
+        an = AnnotationName('empiar_12345-some.other_value-oZRVsrr.json', verbose=True)
+        self.assertFalse(an.is_test)
+        self.assertEqual('empiar', an.archive)
+        self.assertEqual('12345', an.entry_id)
+        self.assertEqual('-some.other_value-oZRVsrr', an.suffix)
+        self.assertEqual('json', an.ext)
+        self.assertEqual('-some.other_value', an.qualifier)
+        self.assertEqual('oZRVsrr', an.noid)
+        self.assertEqual('empiar_12345/empiar_12345-some.other_value/oZRVsrr/', an.entry_subtree)
+        # required attributes
+        values = [
+            'empiar_12345-some.other_value',
+            'empiar_12345-some.other_value-oZRVsrr',
+            'EMPIAR-12345',
+            'empiar-12345',
+            'EMPIAR_12345',
+            'empiar_12345',
+            'EMPIAR-12345-SOME.OTHER_VALUE-oZRVsrr',
+            'empiar-12345-some.other_value-oZRVsrr',
+            'empiar_12345-some.other_value-oZRVsrr.json',
+        ]
+        for i, attr in enumerate(_annotation_attrs):
+            expected_value = values[i]
+            value = getattr(an, attr)
+            self.assertEqual(expected_value, value)
+        # test file
+        an = AnnotationName('test-empiar_12345-some.other_value-oZRVsrr.sff', verbose=True)
         self.assertTrue(an.is_test)
 
     def test_empiar(self):
@@ -105,8 +254,8 @@ class TestAnnotationName(unittest.TestCase):
         self.assertEqual('EMPIAR_10052', an.uppercase_underscore_name)
         self.assertEqual('empiar-10052', an.lowercase_hyphen_name)
         self.assertEqual('empiar_10052', an.lowercase_underscore_name)
-        self.assertEqual('EMPIAR-10052-oZRVsrr', an.full_name_upper)
-        self.assertEqual('empiar-10052-oZRVsrr', an.full_name_lower)
+        self.assertEqual('EMPIAR-10052-RING_1-oZRVsrr', an.full_name_upper)
+        self.assertEqual('empiar-10052-ring_1-oZRVsrr', an.full_name_lower)
         self.assertEqual('empiar_10052-ring_1-oZRVsrr.hff', an.file_name)
         self.assertEqual('-ring_1-oZRVsrr', an.suffix)
         self.assertEqual('-ring_1', an.qualifier)
@@ -123,8 +272,8 @@ class TestAnnotationName(unittest.TestCase):
         self.assertEqual('EMPIAR_10052', an.uppercase_underscore_name)
         self.assertEqual('empiar-10052', an.lowercase_hyphen_name)
         self.assertEqual('empiar_10052', an.lowercase_underscore_name)
-        self.assertEqual('EMPIAR-10052-oZRVsrr', an.full_name_upper)
-        self.assertEqual('empiar-10052-oZRVsrr', an.full_name_lower)
+        self.assertEqual('EMPIAR-10052-RING_1-oZRVsrr', an.full_name_upper)
+        self.assertEqual('empiar-10052-ring_1-oZRVsrr', an.full_name_lower)
         self.assertEqual('empiar_10052-ring_1-oZRVsrr.sff', an.file_name)
         self.assertEqual('-ring_1-oZRVsrr', an.suffix)
         self.assertEqual('-ring_1', an.qualifier)
@@ -202,8 +351,8 @@ class TestAnnotationName(unittest.TestCase):
         self.assertEqual('EMD_8750', an.uppercase_underscore_name)
         self.assertEqual('emd-8750', an.lowercase_hyphen_name)
         self.assertEqual('emd_8750', an.lowercase_underscore_name)
-        self.assertEqual('EMD-8750-ehyZGZS', an.full_name_upper)
-        self.assertEqual('emd-8750-ehyZGZS', an.full_name_lower)
+        self.assertEqual('EMD-8750_V0.8.0.DEV1-ehyZGZS', an.full_name_upper)
+        self.assertEqual('emd-8750_v0.8.0.dev1-ehyZGZS', an.full_name_lower)
         self.assertEqual('emd_8750_v0.8.0.dev1-ehyZGZS.sff', an.file_name)
         self.assertEqual('_v0.8.0.dev1-ehyZGZS', an.suffix)
         self.assertEqual('_v0.8.0.dev1', an.qualifier)
