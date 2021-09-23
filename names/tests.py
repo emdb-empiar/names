@@ -1,5 +1,32 @@
-import unittest
+"""
+Particular use cases:
+oil
+* get_image_dest(basename)
+* get_entry_subtree(basename)
+* _validate_prep_is_canonical(args)
+
+segue
+* all use cases added in form of test
+
+emdb_django.empiar3d
+* [DONE] image_ids = get_image_ids(config['data']['omero_db_string'], entry_name.lowercase_underscore_name,
+                                  entry_name.ext)
+* [DONE] api_url = config['urls']['emdb_rest_api']; r = requests.get(api_url + "all/" + entry_name.uppercase_hyphen_name, verify=False); fast_axis = r.json()[entry_name.uppercase_hyphen_name][0]["map"]["axis_order"]["fast"]
+* [DONE] api_url = config['urls']['emdb_rest_api']; s = requests.get(api_url + "analysis/" + entry_name.uppercase_hyphen_name, verify=False); histogram = json.dumps(s.json()[entry_name.uppercase_hyphen_name][0]["density_distribution"])
+* [DONE] image_ids = get_image_ids(config['data']['omero_db_string'], entry_name.full_name_lower, entry_name.ext)
+* [DONE] api_url = config['urls']['empiar_rest_api']; r = requests.get(api_url + "all/" + entry_name.uppercase_hyphen_name); entry_info = r.json()[entry_name.uppercase_hyphen_name]
+* [DONE] image_params = get_image_params(config['data']['omero_db_string'], entry_name.full_name_lower, entry_name.ext, image_ids['top'])
+* [TO TEST] fname = '/nfs/public/rw/pdbe/mol2cell/data/histograms/' + entry_name.lowercase_hyphen_name + '.json';             with open(fname, 'rb') as hdata:
+                data = json.load(hdata)
+                xs, y = challenge_hist(data, image_params['contrast_max'], image_params['contrast_min'])
+                histogram = \"""{"y": \""" + str(y) + \""", "x":\""" + str(xs) + \"""}\"""
+* [DONE] entry_name = _EntryName(kwargs.get('entry_name')); data_from_db = self.get_data_from_db(entry_name); data = self.parse_data(entry_name, data_from_db)
+* [TO TEST] json_filename = self.get_json_filename(**kwargs)
+"""
+
 import re
+import unittest
+
 import noid
 import psycopg2
 import requests
@@ -321,9 +348,9 @@ class TestImageName(unittest.TestCase):
                         canonical_name).uppercase_hyphen_name
                 # determine the url depending on the archive
                 if entry_name.archive == 'emdb':
-                    url = f"/empiar/volume-browser/{canonical_name}" #reverse_lazy('empiar3d:emdb-entry', kwargs={'entry_name': canonical_name})
+                    url = f"/empiar/volume-browser/{canonical_name}"  # reverse_lazy('empiar3d:emdb-entry', kwargs={'entry_name': canonical_name})
                 elif entry_name.archive == 'empiar':
-                    url = f"/empiar/volume-browser/{canonical_name}" #reverse_lazy('empiar3d:empiar-entry', kwargs={'entry_name': canonical_name})
+                    url = f"/empiar/volume-browser/{canonical_name}"  # reverse_lazy('empiar3d:empiar-entry', kwargs={'entry_name': canonical_name})
                 else:
                     url = None
                 # only return something if we have a valid url
@@ -373,8 +400,9 @@ class TestImageName(unittest.TestCase):
         fast_axis = r.json()[entry_name.uppercase_hyphen_name][0]["map"]["axis_order"]["fast"]
         self.assertTrue(fast_axis in 'XYZ')
         # analysis/ endpoint
-        s = requests.get(emdb_rest_api + "analysis/" + entry_name.full_name_lower, verify=False);
+        s = requests.get(emdb_rest_api + "analysis/" + entry_name.full_name_upper, verify=False)
         histogram = s.json()[entry_name.uppercase_hyphen_name][0]["density_distribution"]
+        print(histogram)
         self.assertIsInstance(histogram, dict)
         self.assertTrue(len(histogram) > 0)
         self.assertTrue("y" in histogram)
@@ -427,7 +455,8 @@ class TestImageName(unittest.TestCase):
         self.assertIn('image_name', data['volumes'][0])
         self.assertIn('url', data['volumes'][0])
         self.assertIn('description', data['volumes'][0])
-        self.assertEqual('EMPIAR-10461', data['volumes'][0]['accession']) # at least the accession should be consistent
+        self.assertEqual('EMPIAR-10461', data['volumes'][0]['accession'])  # at least the accession should be consistent
+
 
 _annotation_attrs = [
     'canonical_name',
@@ -783,30 +812,3 @@ class TestAnnotationName(unittest.TestCase):
     def test_fail(self):
         an = AnnotationName('emd1234', verbose=True)
         self.assertIsNone(an.canonical_name)
-
-
-"""
-Particular use cases:
-oil
-* get_image_dest(basename)
-* get_entry_subtree(basename)
-* _validate_prep_is_canonical(args)
-
-segue
-* all use cases added in form of test
-
-emdb_django.empiar3d
-* [DONE] image_ids = get_image_ids(config['data']['omero_db_string'], entry_name.lowercase_underscore_name,
-                                  entry_name.ext)
-* [DONE] api_url = config['urls']['emdb_rest_api']; r = requests.get(api_url + "all/" + entry_name.uppercase_hyphen_name, verify=False); fast_axis = r.json()[entry_name.uppercase_hyphen_name][0]["map"]["axis_order"]["fast"]
-* [DONE] api_url = config['urls']['emdb_rest_api']; s = requests.get(api_url + "analysis/" + entry_name.uppercase_hyphen_name, verify=False); histogram = json.dumps(s.json()[entry_name.uppercase_hyphen_name][0]["density_distribution"])
-* [DONE] image_ids = get_image_ids(config['data']['omero_db_string'], entry_name.full_name_lower, entry_name.ext)
-* [DONE] api_url = config['urls']['empiar_rest_api']; r = requests.get(api_url + "all/" + entry_name.uppercase_hyphen_name); entry_info = r.json()[entry_name.uppercase_hyphen_name]
-* [DONE] image_params = get_image_params(config['data']['omero_db_string'], entry_name.full_name_lower, entry_name.ext, image_ids['top'])
-* [TO TEST] fname = '/nfs/public/rw/pdbe/mol2cell/data/histograms/' + entry_name.lowercase_hyphen_name + '.json';             with open(fname, 'rb') as hdata:
-                data = json.load(hdata)
-                xs, y = challenge_hist(data, image_params['contrast_max'], image_params['contrast_min'])
-                histogram = \"""{"y": \""" + str(y) + \""", "x":\""" + str(xs) + \"""}\"""
-* [DONE] entry_name = _EntryName(kwargs.get('entry_name')); data_from_db = self.get_data_from_db(entry_name); data = self.parse_data(entry_name, data_from_db)
-* [TO TEST] json_filename = self.get_json_filename(**kwargs)
-"""

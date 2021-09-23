@@ -14,22 +14,23 @@ EMPIAR_CRE = re.compile(
 
 # image names are a bit more promiscuous than annotation names
 IMAGE_NAME_CRE = re.compile(
-    r"^(test-)*(?P<archive>(empiar|emp|emd|emdb))[-_](?P<entry_id>\d{4,5})(?P<suffix>.*?)\.*"
+    r"^(test-)*(?P<prefix>(empiar|emp|emd|emdb))[-_](?P<entry_id>\d{4,5})(?P<suffix>.*?)\.*"
     r"(?P<ext>(map|mrc|rec|st)(\.gz)*)*$",
     re.IGNORECASE
 )
 
 ANNOTATION_NAME_CRE = re.compile(
-    r'^(test-)*(?P<archive>(emd|empiar))[-_](?P<entry_id>\d{4,5})(?P<suffix>.*?)\.*(?P<ext>'
+    r'^(test-)*(?P<prefix>(emd|empiar))[-_](?P<entry_id>\d{4,5})(?P<suffix>.*?)\.*(?P<ext>'
     r'(sff|hff|json|xml|h5|hdf5))*$',
     re.IGNORECASE)
 
 # For annotations the suffix contains the qualifier and the noid (nice opaque ID)
-NOID_CRE = re.compile(r'(?P<qualifier>.*)-(?P<noid>\w{7})$')
+_NOID_CRE = re.compile(r'(?P<qualifier>.*)-(?P<noid>\w{7})$')
 
-# todo: make sure that both classes conform to some interface
-class ImageName:
-    """Parse entry image names i.e. EMDB and EMPIAR images"""
+
+class Name:
+    ext = None
+    CRE = None
 
     def __init__(self, given_name, verbose=False):
         """"""
@@ -38,9 +39,9 @@ class ImageName:
         # private attrs
         self._test = False
         self.archive = None
+        self.prefix = None
         self.entry_id = None
         self.suffix = None
-        self.ext = 'map'
         # the attributes of interest
         self.canonical_name = None
         self.uppercase_hyphen_name = None
@@ -51,12 +52,32 @@ class ImageName:
         self.full_name_lower = None
         self.file_name = None
         # match
-        self._match = IMAGE_NAME_CRE.match(given_name)
+        self._match = self.CRE.match(given_name)
         self._eval()
 
     @property
     def matched(self):
         return bool(self._match)
+
+    def _eval(self):
+        raise NotImplementedError
+
+    @property
+    def entry_subtree(self):
+        raise NotImplementedError
+
+    @property
+    def is_test(self):
+        return self._test
+
+    def __str__(self):
+        return self._given_name
+
+
+class ImageName(Name):
+    """Parse entry image names i.e. EMDB and EMPIAR images"""
+    ext = 'map'
+    CRE = IMAGE_NAME_CRE
 
     def _eval(self):
         if self._match:
@@ -67,24 +88,24 @@ class ImageName:
                 self._test = True
             self.entry_id = mg('entry_id')
             self.suffix = mg('suffix')
-            self._archive = mg('archive')
+            self.prefix = mg('prefix')
             self.ext = mg('ext')
-            if self._archive.lower() in ['empiar', 'emp']:
+            if self.prefix.lower() in ['empiar', 'emp']:
                 if self.ext is None:
                     self.ext = "mrc"
                 self.archive = 'empiar'
-                self.canonical_name = f"{self._archive.lower()}_{self.entry_id}{self.suffix}"
+                self.canonical_name = f"{self.prefix.lower()}_{self.entry_id}{self.suffix}"
             else:
                 if self.ext is None:
                     self.ext = "map"
                 self.archive = 'emdb'
-                self.canonical_name = f"{self._archive.lower()}_{self.entry_id}"
-            self.uppercase_hyphen_name = f"{self._archive.upper()}-{self.entry_id}"
-            self.uppercase_underscore_name = f"{self._archive.upper()}_{self.entry_id}"
-            self.lowercase_hyphen_name = f"{self._archive.lower()}-{self.entry_id}"
-            self.lowercase_underscore_name = f"{self._archive.lower()}_{self.entry_id}"
-            self.full_name_upper = f"{self._archive.upper()}-{self.entry_id}{self.suffix.upper()}"
-            self.full_name_lower = f"{self._archive.lower()}-{self.entry_id}{self.suffix.lower()}"
+                self.canonical_name = f"{self.prefix.lower()}_{self.entry_id}"
+            self.uppercase_hyphen_name = f"{self.prefix.upper()}-{self.entry_id}"
+            self.uppercase_underscore_name = f"{self.prefix.upper()}_{self.entry_id}"
+            self.lowercase_hyphen_name = f"{self.prefix.lower()}-{self.entry_id}"
+            self.lowercase_underscore_name = f"{self.prefix.lower()}_{self.entry_id}"
+            self.full_name_upper = f"{self.prefix.upper()}-{self.entry_id}{self.suffix.upper()}"
+            self.full_name_lower = f"{self.prefix.lower()}-{self.entry_id}{self.suffix.lower()}"
             if self._given_name.endswith(self.ext):
                 self.file_name = self._given_name
             else:
@@ -112,12 +133,8 @@ class ImageName:
             subtree = f"{self.lowercase_underscore_name}/{self.canonical_name}/"
         return subtree
 
-    @property
-    def is_test(self):
-        return self._test
 
-
-class AnnotationName:
+class AnnotationName(Name):
     """An AnnotationName has the following structure:
 
     (test-)*(archive)[-_](entry_id)(suffix)(ext)*
@@ -165,40 +182,14 @@ class AnnotationName:
 
 
     """
+    ext = 'sff'
+    CRE = ANNOTATION_NAME_CRE
 
-    def __init__(self, given_name, verbose=False):
-        self._given_name = given_name
-        self._verbose = verbose
-        # major parts (private attributes)
-        self._test = False
-        self.archive = None
-        self.entry_id = None
-        self.suffix = None
-        self.ext = 'sff'
+    def __init__(self, *args, **kwargs):
+        self.annotation_name = None
         self.qualifier = None
         self.noid = None
-        # the attributes of interest
-        self.canonical_name = None
-        self.annotation_name = None
-        self.uppercase_hyphen_name = None
-        self.lowercase_hyphen_name = None
-        self.uppercase_underscore_name = None
-        self.lowercase_underscore_name = None
-        self.full_name_upper = None
-        self.full_name_lower = None
-        self.file_name = None
-        # match
-        self._match = ANNOTATION_NAME_CRE.match(given_name)
-        # evaluate the match
-        self._eval()
-
-    @property
-    def is_test(self):
-        return self._test
-
-    @property
-    def matched(self):
-        return bool(self._match)
+        super().__init__(*args, **kwargs)
 
     def _eval(self):
         if self._match:
@@ -209,7 +200,7 @@ class AnnotationName:
                 self._test = True
             self.entry_id = mg('entry_id')
             self.suffix = mg('suffix')
-            suffix_match = NOID_CRE.match(self.suffix)
+            suffix_match = _NOID_CRE.match(self.suffix)
             if suffix_match:
                 self.qualifier = suffix_match.group('qualifier')
                 _noid = suffix_match.group('noid')
@@ -217,21 +208,21 @@ class AnnotationName:
             else:
                 self.qualifier = ''
                 self.noid = '*******'  # invalid
-            self._archive = mg('archive')
-            if self._archive.lower() == 'empiar':
+            self.prefix = mg('prefix')
+            if self.prefix.lower() == 'empiar':
                 self.archive = 'empiar'
-                self.canonical_name = f"{self._archive.lower()}_{self.entry_id}{self.qualifier}"
+                self.canonical_name = f"{self.prefix.lower()}_{self.entry_id}{self.qualifier}"
                 self.annotation_name = f"{self.canonical_name}-{self.noid}"
             else:
                 self.archive = 'emdb'
-                self.canonical_name = f"{self._archive.lower()}_{self.entry_id}"
+                self.canonical_name = f"{self.prefix.lower()}_{self.entry_id}"
                 self.annotation_name = f"{self.canonical_name}-{self.noid}"
-            self.uppercase_hyphen_name = f"{self._archive.upper()}-{self.entry_id}"
-            self.uppercase_underscore_name = f"{self._archive.upper()}_{self.entry_id}"
-            self.lowercase_hyphen_name = f"{self._archive.lower()}-{self.entry_id}"
-            self.lowercase_underscore_name = f"{self._archive.lower()}_{self.entry_id}"
-            self.full_name_upper = f"{self._archive.upper()}-{self.entry_id}{self.qualifier.upper()}-{self.noid}"
-            self.full_name_lower = f"{self._archive.lower()}-{self.entry_id}{self.qualifier.lower()}-{self.noid}"
+            self.uppercase_hyphen_name = f"{self.prefix.upper()}-{self.entry_id}"
+            self.uppercase_underscore_name = f"{self.prefix.upper()}_{self.entry_id}"
+            self.lowercase_hyphen_name = f"{self.prefix.lower()}-{self.entry_id}"
+            self.lowercase_underscore_name = f"{self.prefix.lower()}_{self.entry_id}"
+            self.full_name_upper = f"{self.prefix.upper()}-{self.entry_id}{self.qualifier.upper()}-{self.noid}"
+            self.full_name_lower = f"{self.prefix.lower()}-{self.entry_id}{self.qualifier.lower()}-{self.noid}"
             ext = mg('ext')
             if ext is None:
                 ext = "sff"
@@ -243,10 +234,6 @@ class AnnotationName:
         else:
             if self._verbose:
                 print(f"error: failed to match '{self._given_name}'", file=sys.stderr)
-
-    def is_valid(self):
-        """Validate the noid"""
-        return noid.validate(self.noid)
 
     @property
     def entry_subtree(self):
@@ -262,5 +249,6 @@ class AnnotationName:
             subtree = f"{self.lowercase_underscore_name}/{self.canonical_name}/{self.noid}/"
         return subtree
 
-    def __str__(self):
-        return self._given_name
+    def is_valid(self):
+        """Validate the noid"""
+        return noid.validate(self.noid)
