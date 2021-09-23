@@ -27,7 +27,7 @@ ANNOTATION_NAME_CRE = re.compile(
 # For annotations the suffix contains the qualifier and the noid (nice opaque ID)
 NOID_CRE = re.compile(r'(?P<qualifier>.*)-(?P<noid>\w{7})$')
 
-
+# todo: make sure that both classes conform to some interface
 class ImageName:
     """Parse entry image names i.e. EMDB and EMPIAR images"""
 

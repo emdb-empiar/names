@@ -1,6 +1,8 @@
 import unittest
-
+import re
 import noid
+import psycopg2
+import requests
 
 from . import ImageName, AnnotationName
 
@@ -104,20 +106,22 @@ class TestImageName(unittest.TestCase):
         en = ImageName('empiar_10052-ring_1')
         self.assertEqual('empiar', en.archive)
         self.assertEqual('10052', en.id_only)
-        self.assertEqual('empiar_10052-ring_1', en.canonical_name)
+        self.assertEqual('empiar_10052-ring_1', en.canonical_name)  # different
         self.assertEqual('EMPIAR-10052', en.uppercase_hyphen_name)
         self.assertEqual('EMPIAR_10052', en.uppercase_underscore_name)
         self.assertEqual('empiar-10052', en.lowercase_hyphen_name)
         self.assertEqual('empiar_10052', en.lowercase_underscore_name)
-        self.assertEqual('EMPIAR-10052-RING_1', en.full_name_upper)
-        self.assertEqual('empiar-10052-ring_1', en.full_name_lower)
+        self.assertEqual('EMPIAR-10052-RING_1', en.full_name_upper)  # different
+        self.assertEqual('empiar-10052-ring_1', en.full_name_lower)  # different
         self.assertEqual('empiar_10052-ring_1.mrc', en.file_name)
         self.assertEqual('mrc', en.ext)
 
     def test_emdb_5dig(self):
         en = ImageName('EMD-10052')
         self.assertEqual('emdb', en.archive)
-        self.assertEqual('10052', en.id_only)
+        with self.assertWarns(PendingDeprecationWarning):
+            entry_id = en.id_only
+            self.assertEqual('10052', entry_id)
         self.assertEqual('emd_10052', en.canonical_name)
         self.assertEqual('EMD-10052', en.uppercase_hyphen_name)
         self.assertEqual('EMD_10052', en.uppercase_underscore_name)
@@ -142,6 +146,288 @@ class TestImageName(unittest.TestCase):
         self.assertEqual('EMD-1832.map', en.file_name)
         self.assertEqual('map', en.ext)
 
+    @staticmethod
+    def get_image_ids(db_string, image_name, ext):
+        """
+        Get image IDs from OMERO DB
+        """
+        image_ids = {
+            'top': None, 'front': None, 'side': None,
+            'top-thumb': None, 'front-thumb': None, 'side-thumb': None,
+        }
+
+        with psycopg2.connect(db_string) as conn:
+            try:
+                cur = conn.cursor()
+            except Exception as e:
+                print(str(e))
+                return image_ids
+            else:
+                # top image id
+                try:
+                    _image_name = '{}-top.{}'.format(image_name, ext)
+                    print('top image: {}'.format(_image_name))
+                    cur.execute("""SELECT id from image WHERE image.name = '{}'""".format(_image_name))
+                    rows = cur.fetchall()
+                    if len(rows) > 1:
+                        print(
+                            'Too many ({}) images for top image. Image must be unique. Picking first...'.format(
+                                _image_name))
+                    image_ids['top'] = rows[0][0]
+                except Exception as e:
+                    print(str(e))
+
+                # front image id
+                try:
+                    _image_name = '{}-front.{}'.format(image_name, ext)
+                    cur.execute("""SELECT id from image WHERE image.name = '{}'""".format(_image_name))
+                    rows = cur.fetchall()
+                    if 0 < len(rows) > 1:
+                        print(
+                            'Too many ({}) images for front image. Image must be unique. Picking first...'.format(
+                                _image_name))
+                    image_ids['front'] = rows[0][0]
+                except Exception as e:
+                    print(str(e))
+
+                # side image id
+                try:
+                    _image_name = '{}-right.{}'.format(image_name, ext)
+                    cur.execute("""SELECT id from image WHERE image.name = '{}'""".format(_image_name))
+                    rows = cur.fetchall()
+                    if 0 < len(rows) > 1:
+                        print(
+                            'Too many ({}) images for side image. Image must be unique. Picking first...'.format(
+                                _image_name))
+                    image_ids['side'] = rows[0][0]
+                except Exception as e:
+                    print(str(e))
+
+                # top-thumb image id
+                try:
+                    _image_name = '{}-top-thumb.{}'.format(image_name, ext)
+                    cur.execute("""SELECT id from image WHERE image.name = '{}'""".format(_image_name))
+                    rows = cur.fetchall()
+                    if len(rows) > 1:
+                        print(
+                            'Too many ({}) images for top-thumb image. Image must be unique. Picking first...'.format(
+                                _image_name))
+                    image_ids['top-thumb'] = rows[0][0]
+                except Exception as e:
+                    print(str(e))
+
+                # front-thumb image id
+                try:
+                    _image_name = '{}-front-thumb.{}'.format(image_name, ext)
+                    cur.execute("""SELECT id from image WHERE image.name = '{}'""".format(_image_name))
+                    rows = cur.fetchall()
+                    if 0 < len(rows) > 1:
+                        print(
+                            'Too many ({}) images for front-thumb image. Image must be unique. Picking first...'.format(
+                                _image_name))
+                    image_ids['front-thumb'] = rows[0][0]
+                except Exception as e:
+                    print(str(e))
+
+                # side-thumb image id
+                try:
+                    _image_name = '{}-right-thumb.{}'.format(image_name, ext)
+                    cur.execute("""SELECT id from image WHERE image.name = '{}'""".format(_image_name))
+                    rows = cur.fetchall()
+                    if 0 < len(rows) > 1:
+                        print(
+                            'Too many ({}) images for side-thumb image. Image must be unique. Picking first...'.format(
+                                _image_name))
+                    image_ids['side-thumb'] = rows[0][0]
+                except Exception as e:
+                    print(str(e))
+
+        return image_ids
+
+    @staticmethod
+    def get_image_params(db_string, image_name, ext, top_id):
+        """
+        Get image params depending on entry type
+        """
+        image_params = {
+            'x-size': None,
+            'y-size': None,
+            'z-size': None,
+            'contrast_min': None,
+            'contrast_max': None,
+        }
+
+        with psycopg2.connect(db_string) as conn:
+            try:
+                cur = conn.cursor()
+            except Exception as e:
+                print(str(e))
+                return image_params
+            else:
+                _image_name = '{}-front.{}'.format(image_name, ext)
+                try:
+                    query = """SELECT sizex,sizey,sizez from pixels WHERE name = '{}'""".format(_image_name)
+                    cur.execute(
+                        query)  # + """' AND image.owner_id = 2""")
+                    rows = cur.fetchall()
+                    image_params['x-size'], image_params['y-size'], image_params['z-size'] = rows[0]
+                except Exception:
+                    print('Could not find image sizes')
+                try:
+                    contrast_min, contrast_max = get_fb_channel(top_id)
+                    image_params['contrast_min'], image_params['contrast_max'] = contrast_min, contrast_max
+                except Exception:
+                    print('Could not find image contrast values; using defaults (min, max) = (0, 65535)')
+                    image_params['contrast_min'] = 0
+                    image_params['contrast_max'] = 65535
+
+        return image_params
+
+    @staticmethod
+    def get_data_from_db(db_string, entry_name):
+        data_from_db = list()
+        # fixme: referring to a deprecated attribute
+        if entry_name.matched:
+            # regex rooted on entry name
+            query = f"select * from empiar.image where empiar.image.name ~ '^{entry_name.lowercase_underscore_name}([-_].*)*-top\.(map|mrc)$'"
+            # search the omero postgres db for the image name
+            with psycopg2.connect(db_string) as conn:
+                cur = conn.cursor()
+                cur.execute(query)
+                data_from_db = cur.fetchall()
+        return data_from_db
+
+    @staticmethod
+    def parse_data(entry_name, data_from_db):
+        CANONICAL_NAME_RE = r"^(?P<canonical_entry_name>(empiar|emp|EMP|EMPIAR|emd|emdb|EMD|EMDB)[-_]\d{4,5}.*?)\-top\.(map|mrc)$"
+        DESCRIPTION_IN_CANONICAL_NAME_RE = r"(empiar|emp|EMP|EMPIAR|emd|emdb|EMD|EMDB)[-_]\d{4,5}[-_](?P<description>.*)$"
+        data = {
+            'volumes': list()
+        }
+        # if we have any data then we will compile a list of objects
+        for row in data_from_db:
+            # for each row of data
+            canonical_name_match = re.match(
+                CANONICAL_NAME_RE,
+                row[5]
+            )
+            if canonical_name_match:
+                canonical_name = canonical_name_match.group('canonical_entry_name')
+                description_match = re.match(DESCRIPTION_IN_CANONICAL_NAME_RE, canonical_name)
+                if description_match:
+                    description = description_match.group('description').upper()
+                else:
+                    description = _EntryName(
+                        canonical_name).uppercase_hyphen_name
+                # determine the url depending on the archive
+                if entry_name.archive == 'emdb':
+                    url = f"/empiar/volume-browser/{canonical_name}" #reverse_lazy('empiar3d:emdb-entry', kwargs={'entry_name': canonical_name})
+                elif entry_name.archive == 'empiar':
+                    url = f"/empiar/volume-browser/{canonical_name}" #reverse_lazy('empiar3d:empiar-entry', kwargs={'entry_name': canonical_name})
+                else:
+                    url = None
+                # only return something if we have a valid url
+                if url is not None:
+                    entry_data = {
+                        'image_id': row[0],
+                        'accession': ImageName(canonical_name).uppercase_hyphen_name,
+                        'image_name': canonical_name,
+                        'url': url,
+                        'description': description,
+                    }
+                    data['volumes'].append(entry_data)
+                else:
+                    print(f"error: unknown archive '{entry_name.archive}'", file=sys.stderr)
+            else:
+                print(f"info: no match for entry {self.kwargs.get('entry_name')}", file=sys.stderr)
+        return data
+
+    def test_get_image_ids(self):
+        """Test that we can correctly get image ids as in VB"""
+        db_string = "dbname=empe3dstg user=empiar password=pmestgpwd host=pgsql-hxvm-044.ebi.ac.uk port=5432"
+        # EMDB
+        entry_name = ImageName('EMD-1832')
+        image_ids = self.get_image_ids(db_string, entry_name.lowercase_underscore_name, entry_name.ext)
+        self.assertIsInstance(image_ids['top'], int)
+        self.assertIsInstance(image_ids['front'], int)
+        self.assertIsInstance(image_ids['side'], int)
+        self.assertIsInstance(image_ids['top-thumb'], int)
+        self.assertIsInstance(image_ids['front-thumb'], int)
+        self.assertIsInstance(image_ids['side-thumb'], int)
+        # EMPIAR
+        entry_name = ImageName('empiar_10461-survey_image_binned_4')
+        image_ids = self.get_image_ids(db_string, entry_name.canonical_name, entry_name.ext)
+        self.assertIsInstance(image_ids['top'], int)
+        self.assertIsInstance(image_ids['front'], int)
+        self.assertIsInstance(image_ids['side'], int)
+        self.assertIsInstance(image_ids['top-thumb'], int)
+        self.assertIsInstance(image_ids['front-thumb'], int)
+        self.assertIsInstance(image_ids['side-thumb'], int)
+
+    def test_emdb_api(self):
+        """Test that we can get data from EMDB REST API"""
+        # all/ endpoint
+        emdb_rest_api = "https://www.ebi.ac.uk/pdbe/api/emdb/entry/"
+        entry_name = ImageName('EMD-1832')
+        r = requests.get(emdb_rest_api + "all/" + entry_name.uppercase_hyphen_name, verify=False)
+        fast_axis = r.json()[entry_name.uppercase_hyphen_name][0]["map"]["axis_order"]["fast"]
+        self.assertTrue(fast_axis in 'XYZ')
+        # analysis/ endpoint
+        s = requests.get(emdb_rest_api + "analysis/" + entry_name.full_name_lower, verify=False);
+        histogram = s.json()[entry_name.uppercase_hyphen_name][0]["density_distribution"]
+        self.assertIsInstance(histogram, dict)
+        self.assertTrue(len(histogram) > 0)
+        self.assertTrue("y" in histogram)
+        self.assertTrue("x" in histogram)
+        self.assertIsInstance(histogram["x"], list)
+        self.assertIsInstance(histogram["y"], list)
+
+    def test_empiar_api(self):
+        """Test that we can correctly get data from the EMPIAR REST API"""
+        empiar_rest_api = "https://www.ebi.ac.uk/empiar/api/entry/"
+        entry_name = ImageName("empiar_10461-survey_image_binned_4")
+        r = requests.get(empiar_rest_api + "all/" + entry_name.uppercase_hyphen_name)
+        entry_info = r.json()[entry_name.uppercase_hyphen_name]
+        self.assertIsInstance(entry_info, dict)
+        self.assertTrue(len(entry_info) > 0)
+        self.assertTrue('imagesets' in entry_info)
+        self.assertIsInstance(entry_info['imagesets'], list)
+
+    def test_get_image_params(self):
+        """Test that the get_image_params for EMPIAR entries"""
+        db_string = "dbname=empe3dstg user=empiar password=pmestgpwd host=pgsql-hxvm-044.ebi.ac.uk port=5432"
+        entry_name = ImageName('empiar_10461-survey_image_binned_4')
+        image_ids = self.get_image_ids(db_string, entry_name.canonical_name, entry_name.ext)
+        image_params = self.get_image_params(db_string, entry_name.canonical_name, entry_name.ext, image_ids['top'])
+        self.assertTrue('x-size' in image_params)
+        self.assertTrue('y-size' in image_params)
+        self.assertTrue('z-size' in image_params)
+        self.assertTrue('contrast_min' in image_params)
+        self.assertTrue('contrast_max' in image_params)
+        self.assertIsInstance(image_params['x-size'], int)
+        self.assertIsInstance(image_params['y-size'], int)
+        self.assertIsInstance(image_params['z-size'], int)
+        self.assertIsInstance(image_params['contrast_min'], int)
+        self.assertIsInstance(image_params['contrast_max'], int)
+
+    def test_get_data_from_db(self):
+        """Test for EntryURL view"""
+        db_string = "dbname=empe3dstg user=empiar password=pmestgpwd host=pgsql-hxvm-044.ebi.ac.uk port=5432"
+        entry_name = ImageName('EMPIAR-10461')
+        data_from_db = self.get_data_from_db(db_string, entry_name)
+        self.assertIsInstance(data_from_db, list)
+        # at least one result
+        self.assertTrue(len(data_from_db) >= 1)
+        data = self.parse_data(entry_name, data_from_db)
+        self.assertIsInstance(data, dict)
+        self.assertIn('volumes', data)
+        self.assertIsInstance(data['volumes'], list)
+        self.assertIn('image_id', data['volumes'][0])
+        self.assertIn('accession', data['volumes'][0])
+        self.assertIn('image_name', data['volumes'][0])
+        self.assertIn('url', data['volumes'][0])
+        self.assertIn('description', data['volumes'][0])
+        self.assertEqual('EMPIAR-10461', data['volumes'][0]['accession']) # at least the accession should be consistent
 
 _annotation_attrs = [
     'canonical_name',
@@ -497,3 +783,30 @@ class TestAnnotationName(unittest.TestCase):
     def test_fail(self):
         an = AnnotationName('emd1234', verbose=True)
         self.assertIsNone(an.canonical_name)
+
+
+"""
+Particular use cases:
+oil
+* get_image_dest(basename)
+* get_entry_subtree(basename)
+* _validate_prep_is_canonical(args)
+
+segue
+* all use cases added in form of test
+
+emdb_django.empiar3d
+* [DONE] image_ids = get_image_ids(config['data']['omero_db_string'], entry_name.lowercase_underscore_name,
+                                  entry_name.ext)
+* [DONE] api_url = config['urls']['emdb_rest_api']; r = requests.get(api_url + "all/" + entry_name.uppercase_hyphen_name, verify=False); fast_axis = r.json()[entry_name.uppercase_hyphen_name][0]["map"]["axis_order"]["fast"]
+* [DONE] api_url = config['urls']['emdb_rest_api']; s = requests.get(api_url + "analysis/" + entry_name.uppercase_hyphen_name, verify=False); histogram = json.dumps(s.json()[entry_name.uppercase_hyphen_name][0]["density_distribution"])
+* [DONE] image_ids = get_image_ids(config['data']['omero_db_string'], entry_name.full_name_lower, entry_name.ext)
+* [DONE] api_url = config['urls']['empiar_rest_api']; r = requests.get(api_url + "all/" + entry_name.uppercase_hyphen_name); entry_info = r.json()[entry_name.uppercase_hyphen_name]
+* [DONE] image_params = get_image_params(config['data']['omero_db_string'], entry_name.full_name_lower, entry_name.ext, image_ids['top'])
+* [TO TEST] fname = '/nfs/public/rw/pdbe/mol2cell/data/histograms/' + entry_name.lowercase_hyphen_name + '.json';             with open(fname, 'rb') as hdata:
+                data = json.load(hdata)
+                xs, y = challenge_hist(data, image_params['contrast_max'], image_params['contrast_min'])
+                histogram = \"""{"y": \""" + str(y) + \""", "x":\""" + str(xs) + \"""}\"""
+* [DONE] entry_name = _EntryName(kwargs.get('entry_name')); data_from_db = self.get_data_from_db(entry_name); data = self.parse_data(entry_name, data_from_db)
+* [TO TEST] json_filename = self.get_json_filename(**kwargs)
+"""

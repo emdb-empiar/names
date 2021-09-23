@@ -9,5 +9,5 @@ setup(
     author='Paul K. Korir, Andrii Iudin, Sriram Somasundharam',
     author_email='pkorir@ebi.ac.uk, paul.korir@gmail.com',
     description='EMDB, EMPIAR and ARIA entry names',
-    install_requires=['noid'],
+    install_requires=['noid', 'requests', 'psycopg2-binary'],
 )
