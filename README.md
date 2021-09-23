@@ -10,6 +10,15 @@ There are two main classes:
 * `ImageName` represents EMDB/EMPIAR image accessions or file names, which are viewable in the Volume Browser;
 * `AnnotationName` represents EMDB/EMPIAR image annotation accessions or file names.
 
+The classes are designed to handle names having any one of the following forms: 
+* `'emd_1234'`
+* `'EMD-1234.map'`
+* `'EMD_1234.mrc'`
+* `'emd-1234.rec'`
+* `'emd_1234-v0.8.1.dev3.map'`
+* `'empiar_10311-20140801_hela-wt_xy5z8nm_as-template_match_aligned_binned_4.mrc'`
+* `'emd_1234-v0.8.1.dev9-0HCyC5f.sff'` (image annotation with valid annotation accession)
+
 ## Compiled Regular Expressions
 A compiled regular expression is a [`re.Pattern`](https://docs.python.org/3/library/re.html#regular-expression-objects) object with [a particular API](https://docs.python.org/3/library/re.html#regular-expression-objects). This package has two compiled regular expressions:
 * `IMAGE_NAME_CRE` and 
@@ -146,15 +155,8 @@ print(match_obj.group('prefix')) # empiar
 
 
 ## Motivation
-This package has arisen due to the need to have a single reference point on how to handle EMDB and EMPIAR accession and file names. The multiplicity of ways to denote entries results in unnecessariy complex code. By using this package, dependencies can use the attributes and methods it presents without the need to parse names.  
-
-In particular:
-
-* `oil`, the Volume Browser (VB) loader, enforces the use of canonical identifiers for each volume it may display
-
-- Annotation accessions have been designed to include a check digit check to catch simple transcription errors. This package handles validation of annotation names transparently.
-- 
-- The paths where files are stored can also be handled transparently.
-- 
-- Regular expressions can be specified at a single place for all implementations. These may also be reused elsewhere for tests of filenames without the need to parse the contents. 
-- A uniform set of attributes for various accession types e.g. `canonical_name`, `uppercase_hyphen_name` etc.
+This package has arisen due to the need to have a single reference point on how to handle EMDB and EMPIAR accession and file names. The multiplicity of ways to denote entries results in unnecessariy complex code. By using this package, dependencies can use the attributes and methods it presents without the need to parse names.
+* `oil`, the Volume Browser (VB) loader, enforces the use of canonical identifiers for each volume it may display; this package provides a uniform interface that all VB dependencies may use to refer to canonical identifiers.
+* Annotation accessions have been designed to include a check digit check to catch simple transcription errors. This package handles validation of annotation names transparently.
+* The paths where files are stored can also be handled transparently by referring to the `entry_subtree` attribute.
+* A uniform set of attributes for various accession types e.g. `canonical_name`, `uppercase_hyphen_name` etc.
